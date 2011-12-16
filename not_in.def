@@ -1,0 +1,9 @@
+LIBRARY		not_in
+VERSION		1.0
+EXPORTS
+  not_in_init
+  not_in_deinit
+  not_in_reset
+  not_in_add
+  not_in_clear
+  not_in

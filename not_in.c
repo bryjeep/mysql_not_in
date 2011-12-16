@@ -171,13 +171,13 @@ double not_in( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char *error );
 
 struct not_in_data
 {
-	ulonglong count;
-	
+	ulonglong referenceCount;
 	char ** references;
-	ulonglong * lengths;
-	
-	char * current;
-	ulonglong currentLength;
+	ulonglong * referenceLengths;
+
+	ulonglong valueCount;
+	char ** values;
+	ulonglong * valueLengths;
 };
 
 
@@ -222,7 +222,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message )
 		return 1;
 	}
 
-	if (!(data->lengths = (ulonglong *) malloc(sizeof(ulonglong))))
+	if (!(data->referenceLengths = (ulonglong *) malloc(sizeof(ulonglong))))
 	{
 		/*free the memory so far as it doesn't call deinit*/
 		free(data->references);
@@ -231,10 +231,30 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message )
 		return 1;
 	}
 	
-	data->count = 0;
-	data->current = NULL;
-	data->currentLength = 0;
+	if (!(data->values = (char **) malloc(sizeof(char *))))
+	{
+		/*free the memory so far as it doesn't call deinit*/
+		free(data->references);
+		free(data->referenceLengths);
+		free(data);
+		strmov(message,"Couldn't allocate memory");
+		return 1;
+	}
+
+	if (!(data->valueLengths = (ulonglong *) malloc(sizeof(ulonglong))))
+	{
+		/*free the memory so far as it doesn't call deinit*/
+		free(data->references);
+		free(data->referenceLengths);
+		free(data->values);
+		free(data);
+		strmov(message,"Couldn't allocate memory");
+		return 1;
+	}
 	
+	data->referenceCount = 0;
+	data->valueCount = 0;
+		
 	initid->ptr = (char*)data;
 	
 	return 0;
@@ -254,15 +274,20 @@ not_in_deinit( UDF_INIT* initid )
 {
 	struct not_in_data* data = (struct not_in_data*)initid->ptr;
 	
-	/*Free all the strings that make up the array*/
-	for(int i=0; i < data->count; i++){
+	/*Free all the strings that make up the string arrays*/
+	for(int i=0; i < data->referenceCount; i++){
 		free(data->references[i]);
 	}
-	
+	for(int i=0; i < data->valueCount; i++){
+		free(data->values[i]);
+	}
+		
 	/*Free the arrays themself*/
 	free(data->references);
-	free(data->lengths);
-		
+	free(data->referenceLengths);
+	free(data->values);
+	free(data->valueLengths);
+			
 	/*Free the datastructure itself*/
 	free(initid->ptr);
 }
@@ -283,15 +308,18 @@ not_in_clear(UDF_INIT* initid, char* is_null __attribute__((unused)),
 {
 	struct not_in_data* data = (struct not_in_data*)initid->ptr;
 
-	for(int i=0; i < data->count; i++){
+	for(int i=0; i < data->referenceCount; i++){
 		free(data->references[i]);
 	}
 	
-	data->count = 0;
-	data->current = NULL;
-	data->currentLength = 0;
+	for(int i=0; i < data->valueCount; i++){
+		free(data->values[i]);
+	}
 	
-	/*SHOULD WE REALLOC HERE ALSO*/
+	data->referenceCount = 0;
+	data->valueCount = 0;
+	
+	/*SHOULD WE REALLOC HERE ALSO ?*/
 }
 
 /***************************************************************************
@@ -304,19 +332,45 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 {
 	struct not_in_data* data	= (struct not_in_data*)initid->ptr;
 	
-	my_bool alreadyHasValue = 0;
-	my_bool alreadyHasReference = 0;
-		
+	my_bool referencesHaveValue = 0;
+	my_bool referencesHaveReference = 0;
+
+	my_bool valuesHaveValue = 0;
+	my_bool valuesHaveReference = 0;
+			
 	/*
-	**loop through every element of reference in this group
-	**if we already have the value arg and reference arg in the list then break out early
+	**loop through every element of reference array in this group
+	**if we already have the value arg and reference arg in the reference list then break out early
 	*/
-	for(int i=0; i < data->count && (!alreadyHasValue || !alreadyHasReference); i++){
-		if(args->lengths[0] == data->lengths[i] && memcmp(args->args[0],data->referenceArray[i],args->lengths[0]) == 0){
-			alreadyHasValue = 1;
+	for(int i=0; i < data->referenceCount && !(referencesHaveValue && referencesHaveReference); i++){
+		if(args->lengths[0] == data->referenceLengths[i] && memcmp(args->args[0],data->references[i],args->lengths[0]) == 0){
+			/*DON'T ADD VALUE*/
+			referencesHaveValue = 1;
 		}
-		if(args->lengths[1] == data->lengths[i] && memcmp(args->args[1],data->referenceArray[i],args->lengths[1]) == 0){
-			alreadyHasReference = 1;
+		if(args->lengths[1] == data->referenceLengths[i] && memcmp(args->args[1],data->references[i],args->lengths[1]) == 0){
+			/*DON'T ADD REFERENCE*/
+			referencesHaveReference = 1;
+		}
+	}
+	
+	/*
+	**loop through every element of value array in this group
+	**if we already have the value arg and reference arg in the value list then break out early
+	*/
+	for(int i=0; i < data->valueCount && !(valuesHaveValue && valuesHaveReference); i++){
+		if(args->lengths[0] == data->valueLengths[i] && memcmp(args->args[0],data->values[i],args->lengths[0]) == 0){
+			/*DON'T ADD VALUE*/
+			valuesHaveValue = 1;
+		}
+		if(args->lengths[1] == data->valueLengths[i] && memcmp(args->args[1],data->values[i],args->lengths[1]) == 0){
+			/*REMOVE VALUE*/
+			/* this is done by moving last value to current spot */
+			free(data->values[i]);
+			data->valueCount--;
+			data->valueLengths[i] = data->valueLengths[data->valueCount];
+			data->values[i] = data->values[data->valueCount];
+						
+			/*SHOULD WE REALLOC HERE ALSO ?*/
 		}
 	}
 	
@@ -324,44 +378,69 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	**If the references don't already have the value arg
 	**and the value is not equal to the new reference arg
 	*/
-	if	(	!alreadyHasValue && 
-			!(	args->lengths[0] == args->lengths[1] && /*Same Lengths*/
+	if	(	!referencesHaveValue && 
+			!valuesHaveValue &&
+			!( /*TEST TO SEE IF ARGS ARE SAME*/
+				args->lengths[0] == args->lengths[1] && /*Same Lengths*/
 				args->args[0] && /*Not Null*/
 				args->args[1] && /*Not Null*/
-				memcmp(args->args[0],args->args[1],args->lengths[1]) == 0) /*Same bytes*/
+				memcmp(args->args[0],args->args[1],args->lengths[1]) == 0/*Same bytes*/
+			) 
 		){
-		if (data->current){
-			/*free the existing copy*/
-			free(data->current);
-			data->current = NULL;
-			data->currentLength = 0;
-		}
+		char * newValue = NULL;
+		ulonglong newValueLength = 0;
 
-		if (!(data->current = (char*) malloc(args->lengths[0])))
+		if (!(newValue = (char*) malloc(args->lengths[0])))
 		{
 			strmov(message,"Couldn't allocate string");
 			return;
 		}
-		memcpy(data->current,args->args[0],args->lengths[0]);
-		data->currentLength = args->lengths[0];
+		newValueLength = args->lengths[0];
+		memcpy(newValue,args->args[0],newValueLength);
+		
+		/*add new value to array*/
+		data->valueCount++;
+		if (!(data->values = (char **) realloc(data->values, data->valueCount * sizeof(char *))))
+		{
+			strmov(message,"Couldn't reallocate memory");
+			return;
+		}
+		if (!(data->valueLengths = (ulonglong *) realloc(data->valueLengths, data->valueCount * sizeof(ulonglong))))
+		{
+			strmov(message,"Couldn't reallocate memory");
+			return;
+		}
+		data->values[data->valueCount-1]=newValue;
+		data->valueLengths[data->valueCount-1]=newValueLength;		
 	}
 	
-	if(!alreadyHasReference){
-		if (args->args[1]){
-			/*if there are current values that this may invalidate it*/
-			
-			char * newReference = NULL;
-			ulonglong newReferenceLength = 0;
-			if (!(newReference = (char*) malloc(args->lengths[1])))
-			{
-				strmov(message,"Couldn't allocate string");
-				return;
-			}
-			newReferenceLength = args->lengths[1];
-			memcpy(newReference,args->args[1],newReferenceLength);
+	if(!referencesHaveReference && args->args[1]){		
+		char * newReference = NULL;
+		ulonglong newReferenceLength = 0;
+		
+		if (!(newReference = (char*) malloc(args->lengths[1])))
+		{
+			strmov(message,"Couldn't allocate string");
+			return;
 		}
+		newReferenceLength = args->lengths[1];
+		memcpy(newReference,args->args[1],newReferenceLength);
+		
+		/*add new reference to array*/
+		data->referenceCount++;
+		if (!(data->references = (char **) realloc(data->references, data->referenceCount * sizeof(char *))))
+		{
+			strmov(message,"Couldn't reallocate memory");
+			return;
+		}
+		if (!(data->referenceLengths = (ulonglong *) realloc(data->referenceLengths, data->referenceCount * sizeof(ulonglong))))
+		{
+			strmov(message,"Couldn't reallocate memory");
+			return;
+		}
+		data->references[data->referenceCount-1]=newReference;
+		data->referenceLengths[data->referenceCount-1]=newReferenceLength;	
 	}
-
 }
 
 /***************************************************************************

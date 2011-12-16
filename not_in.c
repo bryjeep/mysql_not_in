@@ -58,7 +58,7 @@
 ** After the library is made one must notify mysqld about the new
 ** functions with the commands:
 **
-** CREATE AGGREGATE FUNCTION not_in RETURNS REAL SONAME "not_in.so";
+** CREATE AGGREGATE FUNCTION not_in RETURNS STRING SONAME "not_in.so";
 **
 ** After this the functions will work exactly like native MySQL functions.
 ** Functions should be created only once.
@@ -115,12 +115,12 @@
 
 /* These must be right or mysqld will not find the symbol! */
 
-my_bool not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message );
+my_bool not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* error );
 void not_in_deinit( UDF_INIT* initid );
-void not_in_reset( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char *error );
-void not_in_clear( UDF_INIT* initid, char* is_null, char *error );
-void not_in_add( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char *error );
-double not_in( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char *error );
+void not_in_reset( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char* error );
+void not_in_clear( UDF_INIT* initid, char* is_null, char* error );
+void not_in_add( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char* error );
+char* not_in( UDF_INIT* initid, UDF_ARGS* args, char* result, unsigned long* length, char* is_null, char* error );
 
 /*************************************************************************
 ** Example of init function
@@ -152,12 +152,12 @@ double not_in( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char *error );
 **	char *maybe_null		Information of which arguments
 **					may be NULL
 **
-** message	Error message that should be passed to the user on fail.
+** error	Error message that should be passed to the user on fail.
 **		The message buffer is MYSQL_ERRMSG_SIZE big, but one should
 **		try to keep the error message less than 80 bytes long!
 **
 ** This function should return 1 if something goes wrong. In this case
-** message should contain something usefull!
+** error message should contain something usefull!
 **************************************************************************/
 
 /*
@@ -185,14 +185,14 @@ struct not_in_data
 ** Average Cost Aggregate Function.
 */
 my_bool
-not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message )
+not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* error )
 {
 	struct not_in_data*	data;
 	
 	if (args->arg_count != 2)
 	{
 		strcpy(
-			message,
+			error,
 			"wrong number of arguments: NOT_IN() requires two arguments"
 		);
 		return 1;
@@ -209,7 +209,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message )
 	/* Allocate the main data structure */
 	if (!(data = (struct not_in_data*) malloc(sizeof(struct not_in_data))))
 	{
-		strmov(message,"Couldn't allocate memory");
+		strmov(error,"Couldn't allocate memory");
 		return 1;
 	}
 	
@@ -218,7 +218,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message )
 	{
 		/*free the memory so far as it doesn't call deinit*/
 		free(data);
-		strmov(message,"Couldn't allocate memory");
+		strmov(error,"Couldn't allocate memory");
 		return 1;
 	}
 
@@ -227,7 +227,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message )
 		/*free the memory so far as it doesn't call deinit*/
 		free(data->references);
 		free(data);
-		strmov(message,"Couldn't allocate memory");
+		strmov(error,"Couldn't allocate memory");
 		return 1;
 	}
 	
@@ -237,7 +237,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message )
 		free(data->references);
 		free(data->referenceLengths);
 		free(data);
-		strmov(message,"Couldn't allocate memory");
+		strmov(error,"Couldn't allocate memory");
 		return 1;
 	}
 
@@ -248,13 +248,13 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message )
 		free(data->referenceLengths);
 		free(data->values);
 		free(data);
-		strmov(message,"Couldn't allocate memory");
+		strmov(error,"Couldn't allocate memory");
 		return 1;
 	}
 	
 	data->referenceCount = 0;
 	data->valueCount = 0;
-		
+	
 	initid->ptr = (char*)data;
 	
 	return 0;
@@ -294,17 +294,17 @@ not_in_deinit( UDF_INIT* initid )
 
 /* This is only for MySQL 4.0 compability */
 void
-not_in_reset(UDF_INIT* initid, UDF_ARGS* args, char* is_null, char* message)
+not_in_reset(UDF_INIT* initid, UDF_ARGS* args, char* is_null, char* error)
 {
-	not_in_clear(initid, is_null, message);
-	not_in_add(initid, args, is_null, message);
+	not_in_clear(initid, is_null, error);
+	not_in_add(initid, args, is_null, error);
 }
 
 /* This is needed to get things to work in MySQL 4.1.1 and above */
 
 void
 not_in_clear(UDF_INIT* initid, char* is_null __attribute__((unused)),
-              char* message __attribute__((unused)))
+              char* error __attribute__((unused)))
 {
 	struct not_in_data* data = (struct not_in_data*)initid->ptr;
 
@@ -328,7 +328,7 @@ not_in_clear(UDF_INIT* initid, char* is_null __attribute__((unused)),
 void
 not_in_add(UDF_INIT* initid, UDF_ARGS* args,
             char* is_null __attribute__((unused)),
-            char* message __attribute__((unused)))
+            char* error __attribute__((unused)))
 {
 	struct not_in_data* data	= (struct not_in_data*)initid->ptr;
 	
@@ -343,11 +343,13 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	**if we already have the value arg and reference arg in the reference list then break out early
 	*/
 	for(int i=0; i < data->referenceCount && !(referencesHaveValue && referencesHaveReference); i++){
-		if(args->lengths[0] == data->referenceLengths[i] && memcmp(args->args[0],data->references[i],args->lengths[0]) == 0){
+		if	(	(!args->args[0] && !data->references[i]) || /*if they are both null*/
+				(args->lengths[0] == data->referenceLengths[i] && memcmp(args->args[0],data->references[i],args->lengths[0]) == 0)	){
 			/*DON'T ADD VALUE*/
 			referencesHaveValue = 1;
 		}
-		if(args->lengths[1] == data->referenceLengths[i] && memcmp(args->args[1],data->references[i],args->lengths[1]) == 0){
+		if	(	(!args->args[1] && !data->references[i]) || /*if they are both null*/
+				(args->lengths[1] == data->referenceLengths[i] && memcmp(args->args[1],data->references[i],args->lengths[1]) == 0)	){
 			/*DON'T ADD REFERENCE*/
 			referencesHaveReference = 1;
 		}
@@ -358,11 +360,13 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	**if we already have the value arg and reference arg in the value list then break out early
 	*/
 	for(int i=0; i < data->valueCount && !(valuesHaveValue && valuesHaveReference); i++){
-		if(args->lengths[0] == data->valueLengths[i] && memcmp(args->args[0],data->values[i],args->lengths[0]) == 0){
+		if	(	(!args->args[0] && !data->values[i]) || /*if they are both null*/
+				(args->lengths[0] == data->valueLengths[i] && memcmp(args->args[0],data->values[i],args->lengths[0]) == 0)	){
 			/*DON'T ADD VALUE*/
 			valuesHaveValue = 1;
 		}
-		if(args->lengths[1] == data->valueLengths[i] && memcmp(args->args[1],data->values[i],args->lengths[1]) == 0){
+		if	(	(!args->args[1] && !data->values[i]) || /*if they are both null*/
+				(args->lengths[1] == data->valueLengths[i] && memcmp(args->args[1],data->values[i],args->lengths[1]) == 0)	){
 			/*REMOVE VALUE*/
 			/* this is done by moving last value to current spot */
 			free(data->values[i]);
@@ -381,61 +385,64 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	if	(	!referencesHaveValue && 
 			!valuesHaveValue &&
 			!( /*TEST TO SEE IF ARGS ARE SAME*/
-				args->lengths[0] == args->lengths[1] && /*Same Lengths*/
-				args->args[0] && /*Not Null*/
-				args->args[1] && /*Not Null*/
-				memcmp(args->args[0],args->args[1],args->lengths[1]) == 0/*Same bytes*/
+				(!args->args[0] && !args->args[1]) || /*if they are both null*/
+				(args->lengths[0] == args->lengths[1] && /*Same Lengths*/
+				memcmp(args->args[0],args->args[1],args->lengths[1]) == 0)/*Same bytes*/
 			) 
 		){
 		char * newValue = NULL;
 		ulonglong newValueLength = 0;
 
-		if (!(newValue = (char*) malloc(args->lengths[0])))
-		{
-			strmov(message,"Couldn't allocate string");
-			return;
+		if(args->args[0]){/*create a copy if its not NULL*/
+			if (!(newValue = (char*) malloc(args->lengths[0])))
+			{
+				strmov(error,"Couldn't allocate string");
+				return;
+			}
+			newValueLength = args->lengths[0];
+			memcpy(newValue,args->args[0],newValueLength);
 		}
-		newValueLength = args->lengths[0];
-		memcpy(newValue,args->args[0],newValueLength);
 		
 		/*add new value to array*/
 		data->valueCount++;
 		if (!(data->values = (char **) realloc(data->values, data->valueCount * sizeof(char *))))
 		{
-			strmov(message,"Couldn't reallocate memory");
+			strmov(error,"Couldn't reallocate memory");
 			return;
 		}
 		if (!(data->valueLengths = (ulonglong *) realloc(data->valueLengths, data->valueCount * sizeof(ulonglong))))
 		{
-			strmov(message,"Couldn't reallocate memory");
+			strmov(error,"Couldn't reallocate memory");
 			return;
 		}
 		data->values[data->valueCount-1]=newValue;
 		data->valueLengths[data->valueCount-1]=newValueLength;		
 	}
 	
-	if(!referencesHaveReference && args->args[1]){		
+	if(!referencesHaveReference){		
 		char * newReference = NULL;
 		ulonglong newReferenceLength = 0;
 		
-		if (!(newReference = (char*) malloc(args->lengths[1])))
-		{
-			strmov(message,"Couldn't allocate string");
-			return;
+		if(args->args[1]){/*create a copy if its not NULL*/
+			if (!(newReference = (char*) malloc(args->lengths[1])))
+			{
+				strmov(error,"Couldn't allocate string");
+				return;
+			}
+			newReferenceLength = args->lengths[1];
+			memcpy(newReference,args->args[1],newReferenceLength);
 		}
-		newReferenceLength = args->lengths[1];
-		memcpy(newReference,args->args[1],newReferenceLength);
 		
 		/*add new reference to array*/
 		data->referenceCount++;
 		if (!(data->references = (char **) realloc(data->references, data->referenceCount * sizeof(char *))))
 		{
-			strmov(message,"Couldn't reallocate memory");
+			strmov(error,"Couldn't reallocate memory");
 			return;
 		}
 		if (!(data->referenceLengths = (ulonglong *) realloc(data->referenceLengths, data->referenceCount * sizeof(ulonglong))))
 		{
-			strmov(message,"Couldn't reallocate memory");
+			strmov(error,"Couldn't reallocate memory");
 			return;
 		}
 		data->references[data->referenceCount-1]=newReference;
@@ -469,13 +476,14 @@ not_in( UDF_INIT *initid, UDF_ARGS *args __attribute__((unused)),
 {
 	struct not_in_data* data = (struct not_in_data*)initid->ptr;
 	
-	/*
-	SHOULD I USE THE RESULT BUFFER?
-	*length = (unsigned long) 0;
-	*result = data->currentValue;
-	*/
-	
-	return result;
+	/*return the first one*/
+	if(data->valueCount){
+		*length = data->valueLengths[0];
+		return data->values[0];
+	}else{
+		strmov(error,"Empty Result (This isn't same as null which would be be valid for not appearing in)");
+		return NULL;
+	}
 }
 
 #endif /* HAVE_DLOPEN */

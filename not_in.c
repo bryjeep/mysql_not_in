@@ -115,7 +115,7 @@
 
 /* These must be right or mysqld will not find the symbol! */
 
-my_bool not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* error );
+my_bool not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message );
 void not_in_deinit( UDF_INIT* initid );
 void not_in_reset( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char* error );
 void not_in_clear( UDF_INIT* initid, char* is_null, char* error );
@@ -152,9 +152,9 @@ char* not_in( UDF_INIT* initid, UDF_ARGS* args, char* result, unsigned long* len
 **	char *maybe_null		Information of which arguments
 **					may be NULL
 **
-** error	Error message that should be passed to the user on fail.
+** message	Error message that should be passed to the user on fail.
 **		The message buffer is MYSQL_ERRMSG_SIZE big, but one should
-**		try to keep the error message less than 80 bytes long!
+**		try to keep the message less than 80 bytes long!
 **
 ** This function should return 1 if something goes wrong. In this case
 ** error message should contain something usefull!
@@ -185,14 +185,14 @@ struct not_in_data
 ** Average Cost Aggregate Function.
 */
 my_bool
-not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* error )
+not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message )
 {
 	struct not_in_data*	data;
 	
 	if (args->arg_count != 2)
 	{
 		strcpy(
-			error,
+			message,
 			"wrong number of arguments: NOT_IN() requires two arguments"
 		);
 		return 1;
@@ -209,7 +209,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* error )
 	/* Allocate the main data structure */
 	if (!(data = (struct not_in_data*) malloc(sizeof(struct not_in_data))))
 	{
-		strmov(error,"Couldn't allocate memory");
+		strmov(message,"Couldn't allocate memory");
 		return 1;
 	}
 	
@@ -218,7 +218,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* error )
 	{
 		/*free the memory so far as it doesn't call deinit*/
 		free(data);
-		strmov(error,"Couldn't allocate memory");
+		strmov(message,"Couldn't allocate memory");
 		return 1;
 	}
 
@@ -227,7 +227,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* error )
 		/*free the memory so far as it doesn't call deinit*/
 		free(data->references);
 		free(data);
-		strmov(error,"Couldn't allocate memory");
+		strmov(message,"Couldn't allocate memory");
 		return 1;
 	}
 	
@@ -237,7 +237,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* error )
 		free(data->references);
 		free(data->referenceLengths);
 		free(data);
-		strmov(error,"Couldn't allocate memory");
+		strmov(message,"Couldn't allocate memory");
 		return 1;
 	}
 
@@ -248,7 +248,7 @@ not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* error )
 		free(data->referenceLengths);
 		free(data->values);
 		free(data);
-		strmov(error,"Couldn't allocate memory");
+		strmov(message,"Couldn't allocate memory");
 		return 1;
 	}
 	
@@ -323,7 +323,17 @@ not_in_clear(UDF_INIT* initid, char* is_null __attribute__((unused)),
 }
 
 /***************************************************************************
-** UNKNOWN FORMAT RIGH NOW
+** UDF add function.
+** Arguments:
+** initid	Structure filled by xxx_init
+** args		The same structure as to xxx_init. This structure
+**		contains values for all parameters.
+**		Note that the functions MUST check and convert all
+**		to the type it wants!  Null values are represented by
+**		a NULL pointer
+** is_null	If the result is null, one should store 1 here.
+** error	If something goes fatally wrong one should store 1 here.
+**
 ***************************************************************************/
 void
 not_in_add(UDF_INIT* initid, UDF_ARGS* args,
@@ -334,9 +344,7 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	
 	my_bool referencesHaveValue = 0;
 	my_bool referencesHaveReference = 0;
-
 	my_bool valuesHaveValue = 0;
-	my_bool valuesHaveReference = 0;
 			
 	/*
 	**loop through every element of reference array in this group
@@ -396,7 +404,7 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 		if(args->args[0]){/*create a copy if its not NULL*/
 			if (!(newValue = (char*) malloc(args->lengths[0])))
 			{
-				strmov(error,"Couldn't allocate string");
+				*error = 1;
 				return;
 			}
 			newValueLength = args->lengths[0];
@@ -407,12 +415,12 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 		data->valueCount++;
 		if (!(data->values = (char **) realloc(data->values, data->valueCount * sizeof(char *))))
 		{
-			strmov(error,"Couldn't reallocate memory");
+			*error = 1;
 			return;
 		}
 		if (!(data->valueLengths = (ulonglong *) realloc(data->valueLengths, data->valueCount * sizeof(ulonglong))))
 		{
-			strmov(error,"Couldn't reallocate memory");
+			*error = 1;
 			return;
 		}
 		data->values[data->valueCount-1]=newValue;
@@ -426,7 +434,7 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 		if(args->args[1]){/*create a copy if its not NULL*/
 			if (!(newReference = (char*) malloc(args->lengths[1])))
 			{
-				strmov(error,"Couldn't allocate string");
+				*error = 1;
 				return;
 			}
 			newReferenceLength = args->lengths[1];
@@ -437,12 +445,12 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 		data->referenceCount++;
 		if (!(data->references = (char **) realloc(data->references, data->referenceCount * sizeof(char *))))
 		{
-			strmov(error,"Couldn't reallocate memory");
+			*error = 1;
 			return;
 		}
 		if (!(data->referenceLengths = (ulonglong *) realloc(data->referenceLengths, data->referenceCount * sizeof(ulonglong))))
 		{
-			strmov(error,"Couldn't reallocate memory");
+			*error = 1;
 			return;
 		}
 		data->references[data->referenceCount-1]=newReference;
@@ -481,7 +489,7 @@ not_in( UDF_INIT *initid, UDF_ARGS *args __attribute__((unused)),
 		*length = data->valueLengths[0];
 		return data->values[0];
 	}else{
-		strmov(error,"Empty Result (This isn't same as null which would be be valid for not appearing in)");
+		*error = 1;
 		return NULL;
 	}
 }

@@ -417,9 +417,11 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	if	(	!referencesHaveValue && 
 			!valuesHaveValue &&
 			!( /*TEST TO SEE IF ARGS ARE SAME*/
-				(!args->args[0] && !args->args[1]) || /*if they are both null*/
-				(args->lengths[0] == args->lengths[1] && /*Same Lengths*/
-				memcmp(args->args[0],args->args[1],args->lengths[1]) == 0)/*Same bytes*/
+				(!args->args[0] && !args->args[1]) || /*if they are both null or*/
+				(	args->args[0] && args->args[1] && /*if they are both not null*/
+					args->lengths[0] == args->lengths[1] && /* have the same length */
+					memcmp(args->args[0],args->args[1],args->lengths[1]) == 0 /* and same data */
+				)
 			) 
 		){
 		char * newValue = NULL;

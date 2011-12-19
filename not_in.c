@@ -345,6 +345,7 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	my_bool referencesHaveValue = 0;
 	my_bool referencesHaveReference = 0;
 	my_bool valuesHaveValue = 0;
+	my_bool valuesHaveReference = 0;
 			
 	/*
 	**loop through every element of reference array in this group
@@ -376,6 +377,7 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 		if	(	(!args->args[1] && !data->values[i]) || /*if they are both null*/
 				(args->lengths[1] == data->valueLengths[i] && memcmp(args->args[1],data->values[i],args->lengths[1]) == 0)	){
 			/*REMOVE VALUE*/
+			valuesHaveReference = 1;
 			/* this is done by moving last value to current spot */
 			free(data->values[i]);
 			data->valueCount--;

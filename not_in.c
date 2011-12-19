@@ -278,10 +278,12 @@ not_in_deinit( UDF_INIT* initid )
 	
 	/*Free all the strings that make up the string arrays*/
 	for(int i=0; i < data->referenceCount; i++){
-		free(data->references[i]);
+		if(data->references[i])
+			free(data->references[i]);
 	}
 	for(int i=0; i < data->valueCount; i++){
-		free(data->values[i]);
+		if(data->values[i])
+			free(data->values[i]);
 	}
 		
 	/*Free the arrays themself*/
@@ -311,11 +313,12 @@ not_in_clear(UDF_INIT* initid, char* is_null __attribute__((unused)),
 	struct not_in_data* data = (struct not_in_data*)initid->ptr;
 
 	for(int i=0; i < data->referenceCount; i++){
-		free(data->references[i]);
+		if(data->references[i])
+			free(data->references[i]);
 	}
-	
 	for(int i=0; i < data->valueCount; i++){
-		free(data->values[i]);
+		if(data->values[i])
+			free(data->values[i]);
 	}
 	
 	data->referenceCount = 0;
@@ -354,13 +357,21 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	**if we already have the value arg and reference arg in the reference list then break out early
 	*/
 	for(int i=0; i < data->referenceCount && !(referencesHaveValue && referencesHaveReference); i++){
-		if	(	(!args->args[0] && !data->references[i]) || /*if they are both null*/
-				(args->lengths[0] == data->referenceLengths[i] && memcmp(args->args[0],data->references[i],args->lengths[0]) == 0)	){
+		if	(	(!args->args[0] && !data->references[i]) || /*if they are both null or*/
+				(	args->args[0] && data->references[i] && /*if they are both not null*/
+					args->lengths[0] == data->referenceLengths[i] && /* have the same length */
+					memcmp(args->args[0],data->references[i],args->lengths[0]) == 0 /* and same data */
+				)
+			){
 			/*DON'T ADD VALUE*/
 			referencesHaveValue = 1;
 		}
-		if	(	(!args->args[1] && !data->references[i]) || /*if they are both null*/
-				(args->lengths[1] == data->referenceLengths[i] && memcmp(args->args[1],data->references[i],args->lengths[1]) == 0)	){
+		if	(	(!args->args[1] && !data->references[i]) || /*if they are both null or*/
+				(	args->args[1] && data->references[i] && /*if they are both not null*/
+					args->lengths[1] == data->referenceLengths[i] && /* have the same length */
+					memcmp(args->args[1],data->references[i],args->lengths[1]) == 0 /* and same data */
+				)
+			){
 			/*DON'T ADD REFERENCE*/
 			referencesHaveReference = 1;
 		}
@@ -371,17 +382,26 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	**if we already have the value arg and reference arg in the value list then break out early
 	*/
 	for(int i=0; i < data->valueCount && !(valuesHaveValue && valuesHaveReference); i++){
-		if	(	(!args->args[0] && !data->values[i]) || /*if they are both null*/
-				(args->lengths[0] == data->valueLengths[i] && memcmp(args->args[0],data->values[i],args->lengths[0]) == 0)	){
+		if	(	(!args->args[0] && !data->values[i]) || /*if they are both null or*/
+				(	args->args[0] && data->values[i] && /*if they are both not null*/
+					args->lengths[0] == data->valueLengths[i] && /* have the same length */
+					memcmp(args->args[0],data->values[i],args->lengths[0]) == 0 /* and same data */
+				)
+			){
 			/*DON'T ADD VALUE*/
 			valuesHaveValue = 1;
 		}
 		if	(	(!args->args[1] && !data->values[i]) || /*if they are both null*/
-				(args->lengths[1] == data->valueLengths[i] && memcmp(args->args[1],data->values[i],args->lengths[1]) == 0)	){
+				(	args->args[1] && data->values[i] && /*if they are both not null*/
+					args->lengths[1] == data->valueLengths[i] && /* have the same length */
+					memcmp(args->args[1],data->values[i],args->lengths[1]) == 0 /* and same data */
+				)
+			){
 			/*REMOVE VALUE*/
 			valuesHaveReference = 1;
 			/* this is done by moving last value to current spot */
-			free(data->values[i]);
+			if(data->values[i])
+				free(data->values[i]);
 			data->valueCount--;
 			data->valueLengths[i] = data->valueLengths[data->valueCount];
 			data->values[i] = data->values[data->valueCount];

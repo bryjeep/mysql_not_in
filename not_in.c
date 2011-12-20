@@ -115,14 +115,18 @@
 
 /* These must be right or mysqld will not find the symbol! */
 
+#ifdef __cplusplus
 extern "C" {
+#endif
 	my_bool not_in_init( UDF_INIT* initid, UDF_ARGS* args, char* message );
 	void not_in_deinit( UDF_INIT* initid );
 	void not_in_reset( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char* error );
 	void not_in_clear( UDF_INIT* initid, char* is_null, char* error );
 	void not_in_add( UDF_INIT* initid, UDF_ARGS* args, char* is_null, char* error );
 	char* not_in( UDF_INIT* initid, UDF_ARGS* args, char* result, unsigned long* length, char* is_null, char* error );
+#ifdef __cplusplus
 }
+#endif
 
 /*************************************************************************
 ** Example of init function

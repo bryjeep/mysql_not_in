@@ -2,7 +2,7 @@ TARGET = not_in.so
 CFLAGS = -O2 -fPIC -I/usr/include/mysql -DHAVE_DLOPEN=1
 
 # Where to copy the final library
-DEST	= /usr/lib/mysql/plugin
+DEST	= /usr/lib64/mysql/plugin
 
 SRCS = 	not_in.c
 
@@ -17,7 +17,7 @@ clean:
 	$(RM) $(OBJS) $(TARGET)
 
 %.o: %.c
-	$(CXX) -o $@ $(CFLAGS) -c $<
+	$(CC) -o $@ $(CFLAGS) -c $<
 
 $(TARGET): $(OBJS)
 	$(LD) -shared -o $(TARGET) $(OBJS)

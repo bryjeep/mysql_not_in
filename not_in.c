@@ -275,13 +275,14 @@ void
 not_in_deinit( UDF_INIT* initid )
 {
 	struct not_in_data* data = (struct not_in_data*)initid->ptr;
+	int i;
 	
 	/*Free all the strings that make up the string arrays*/
-	for(int i=0; i < data->referenceCount; i++){
+	for(i=0; i < data->referenceCount; i++){
 		if(data->references[i])
 			free(data->references[i]);
 	}
-	for(int i=0; i < data->valueCount; i++){
+	for(i=0; i < data->valueCount; i++){
 		if(data->values[i])
 			free(data->values[i]);
 	}
@@ -311,12 +312,13 @@ not_in_clear(UDF_INIT* initid, char* is_null __attribute__((unused)),
               char* error __attribute__((unused)))
 {
 	struct not_in_data* data = (struct not_in_data*)initid->ptr;
-
-	for(int i=0; i < data->referenceCount; i++){
+	int i;
+	
+	for(i=0; i < data->referenceCount; i++){
 		if(data->references[i])
 			free(data->references[i]);
 	}
-	for(int i=0; i < data->valueCount; i++){
+	for(i=0; i < data->valueCount; i++){
 		if(data->values[i])
 			free(data->values[i]);
 	}
@@ -351,12 +353,14 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	my_bool referencesHaveReference = 0;
 	my_bool valuesHaveValue = 0;
 	my_bool valuesHaveReference = 0;
-			
+	
+	int i;
+		
 	/*
 	**loop through every element of reference array in this group
 	**if we already have the value arg and reference arg in the reference list then break out early
 	*/
-	for(int i=0; i < data->referenceCount && !(referencesHaveValue && referencesHaveReference); i++){
+	for(i=0; i < data->referenceCount && !(referencesHaveValue && referencesHaveReference); i++){
 		if	(	(!args->args[0] && !data->references[i]) || /*if they are both null or*/
 				(	args->args[0] && data->references[i] && /*if they are both not null*/
 					args->lengths[0] == data->referenceLengths[i] && /* have the same length */
@@ -381,7 +385,7 @@ not_in_add(UDF_INIT* initid, UDF_ARGS* args,
 	**loop through every element of value array in this group
 	**if we already have the value arg and reference arg in the value list then break out early
 	*/
-	for(int i=0; i < data->valueCount && !(valuesHaveValue && valuesHaveReference); i++){
+	for(i=0; i < data->valueCount && !(valuesHaveValue && valuesHaveReference); i++){
 		if	(	(!args->args[0] && !data->values[i]) || /*if they are both null or*/
 				(	args->args[0] && data->values[i] && /*if they are both not null*/
 					args->lengths[0] == data->valueLengths[i] && /* have the same length */
